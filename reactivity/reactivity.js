@@ -8,22 +8,64 @@ const data = {
   text: "hello world",
   ok: true,
   foo: 3,
-  bar: "bar",
   a: 0,
   b: 1,
+  get bar() {
+    console.log(this);
+    return this.foo;
+  },
 };
+
+const TriggerType = {
+  SET: "SET",
+  ADD: "ADD",
+  DELETE: "DELETE",
+};
+const __ITERATOR_KEY__ = Symbol();
 const obj = new Proxy(data, {
-  get(target, key) {
+  deleteProperty(target, key) {
+    // 被操作的属性是否是对象自己的属性
+    const hasKey = hasProperty(target, key);
+
+    // 利用Reflect.deleteProperty完成属性的删除
+    const res = Reflect.deleteProperty(target, key);
+    if (hasKey && res) {
+      // 只有被删除的属性是自身的属性且成功删除时才触发更新
+      trigger(target, key, TriggerType.DELETE);
+    }
+
+    return res;
+  },
+  get(target, key, receiver) {
     // 记录依赖
     track(target, key);
-    return target[key];
+
+    return Reflect.get(target, key, receiver);
   },
-  set(target, key, newValue) {
-    target[key] = newValue;
+  has(target, key, receiver) {
+    track(target, key);
+    return Reflect.has(target, key, receiver);
+  },
+  ownKeys(target) {
+    track(target, __ITERATOR_KEY__);
+    return Reflect.ownKeys(target);
+  },
+  set(target, key, newValue, receiver) {
+    // 如果属性不存在，则说明是在添加属性，否则设置已有属性。
+    const type = hasProperty(target, key) ? TriggerType.SET : TriggerType.ADD;
+
+    // 使用Reflect.set避免魔法
+    const res = Reflect.set(target, key, newValue, receiver);
     // 执行副作用
-    trigger(target, key);
+    trigger(target, key, type);
+
+    return res;
   },
 });
+
+function hasProperty(target, key) {
+  return Object.prototype.hasOwnProperty.call(target, key);
+}
 
 function flushJob() {
   // 队列正在刷新，啥也不做
@@ -53,11 +95,12 @@ function track(target, key) {
   // 将deps合activeEffectFn.deps添加关联
 }
 
-function trigger(target, key) {
+function trigger(target, key, type) {
   const depsMap = bucket.get(target);
   if (!depsMap) return;
   const effects = depsMap.get(key);
   const effectsToRun = new Set(effects);
+
   // 由于在trigger时取得的副作用函数执行时又会有新的副作用被添加进来，所以这里用set再套一层，避免无限循环
   effects &&
     effects.forEach((effect) => {
@@ -67,6 +110,21 @@ function trigger(target, key) {
         // 将要执行的effect添加到effectsToRun
       }
     });
+
+  // 只有当操作类型为'ADD'和'DELETE'时，才触发__ITERATOR_KEY__关联的副作用函数重新执行
+  // 注：涉及对象属性增删的操作都应触发__ITERATOR_KEY__关联的副作用函数重新执行
+  if (type === TriggerType.ADD || type === TriggerType.DELETE) {
+    // 取得与__ITERATOR_KEY__相关联的副作用函数
+    const iterateEffects = depsMap.get(__ITERATOR_KEY__);
+    // 将__ITERATOR_KEY__相关的副作用函数也添加到effectsToRun
+    iterateEffects &&
+      iterateEffects.forEach((effect) => {
+        if (effect !== activeEffectFn) {
+          effectsToRun.add(effect);
+        }
+      });
+  }
+
   effectsToRun.forEach((effectFn) => {
     // 如果指定了调度器执行effect，则使用调度器执行，否则直接执行
     if (effectFn.options.scheduler) {
@@ -116,7 +174,7 @@ function computed(getter) {
     scheduler() {
       if (!dirty) {
         dirty = true;
-        trigger(obj, "value"); // 当前计算属性发生变化时，手动调用trigger执行其他依赖于该计算属性的副作用函数
+        trigger(obj, "value", TriggerType.SET); // 当前计算属性发生变化时，手动调用trigger执行其他依赖于该计算属性的副作用函数
       }
     },
   });
@@ -205,34 +263,40 @@ function watch(source, cb, options) {
   }
 }
 
-function sleep() {
-  return new Promise((resolve) => {
-    setTimeout(resolve, 3000);
-  });
-}
-
-let finalData;
-watch(
-  () => obj.foo,
-  async (newValue, oldValue, onInvalidate) => {
-    let expired = false;
-    onInvalidate(() => {
-      expired = true;
-    });
-    await sleep();
-
-    // 如果当前副作用周期已过期则舍弃其结果，只要未过期时的值
-    if (!expired) {
-      finalData = newValue;
-    }
-    console.log(`数据发生了变化：${oldValue} => ${newValue}`);
-  },
-  {
-    immediate: false,
-    // 回调函数会在watch创建时立即执行一次
-    flush: "sync", // 还可指定 pre | sync
+effect(() => {
+  for (const key in obj) {
+    console.log(key);
   }
-);
+});
+
+// function sleep() {
+//   return new Promise((resolve) => {
+//     setTimeout(resolve, 3000);
+//   });
+// }
+
+// let finalData;
+// watch(
+//   () => obj.foo,
+//   async (newValue, oldValue, onInvalidate) => {
+//     let expired = false;
+//     onInvalidate(() => {
+//       expired = true;
+//     });
+//     await sleep();
+
+//     // 如果当前副作用周期已过期则舍弃其结果，只要未过期时的值
+//     if (!expired) {
+//       finalData = newValue;
+//     }
+//     console.log(`数据发生了变化：${oldValue} => ${newValue}`);
+//   },
+//   {
+//     immediate: false,
+//     // 回调函数会在watch创建时立即执行一次
+//     flush: "sync", // 还可指定 pre | sync
+//   }
+// );
 
 // const subRes = computed(() => {
 //   console.log(1111);
