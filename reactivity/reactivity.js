@@ -184,7 +184,7 @@ export function effect(fn, options = {}) {
     const res = fn(); // 将副作用函数fn的执行结果保存到res中
     effectStack.pop(); // 执行完副作用函数之后，将当前副作用弹出栈，将activeEffectFn还原为当前栈顶的值。
     // 这样做的目的是栈底始终是外层副作用函数，栈顶是当前副作用函数，保证每个activeEffectFn不会被覆盖
-    activeEffectFn = effectStack[effectStack.length - 1];
+    activeEffectFn = effectStack[effectStack.length - 1]; // 将activeEffectFn设置为外层副作用函数，这样做的目的是在多层effect时，能够保存上层effect
 
     return res;
   };
