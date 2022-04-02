@@ -1,20 +1,20 @@
-import { reactive, effect, shallowReactive } from "./reactivity.js";
+import { reactive, effect, shallowReactive, readonly } from "./reactivity.js";
 
 const obj = {
   foo: {
     bar: 2,
   },
 };
-const data = shallowReactive(obj);
+const data = readonly(obj);
 
 effect(() => {
-  console.log(data.foo.bar);
+  console.log(data.foo);
 });
 
 setTimeout(() => {
-    data.foo.bar = 3;
-    console.log('bar', data.foo.bar)
-}, 2000)
+  data.foo.bar = 222;
+  delete data.foo.bar;
+}, 2000);
 
 // const obj = {};
 // const proto = { bar: 1 };

@@ -93,9 +93,15 @@ function cleanup(effectFn) {
 }
 
 // 接收一个参数isShallow，代表是否浅响应式，默认为false
-function createReactive(obj, isShallow = false) {
+// 接收ige参数isReadonly，代表是否只读，默认为false
+function createReactive(obj, isShallow = false, isReadonly = false) {
   return new Proxy(obj, {
     deleteProperty(target, key) {
+      // 如果是只读的就给警告
+      if (isReadonly) {
+        console.warn(`property ${key} is readonly`);
+        return true;
+      }
       // 被操作的属性是否是对象自己的属性
       const hasKey = hasProperty(target, key);
 
@@ -113,14 +119,20 @@ function createReactive(obj, isShallow = false) {
         return target;
       }
       const res = Reflect.get(target, key, receiver);
-      // 记录依赖
-      track(target, key);
+      // 只有不是只读的时候才建立副作用函数与以来的关系
+      if (!isReadonly) {
+        // 记录依赖
+        track(target, key);
+      }
+
+      // 如果是浅层响应式直接返回，不需要再做包装
       if (isShallow) {
         return res;
       }
 
       if (typeof res === "object" && res !== null) {
-        return reactive(res);
+        // 如果是只读的，那么包装内部的only
+        return isReadonly ? readonly(res) : reactive(res);
       }
 
       return res;
@@ -134,6 +146,11 @@ function createReactive(obj, isShallow = false) {
       return Reflect.ownKeys(target);
     },
     set(target, key, newValue, receiver) {
+      // 如果是只读的就给警告
+      if (isReadonly) {
+        console.warn(`property ${key} is readonly`);
+        return true;
+      }
       // 如果属性不存在，则说明是在添加属性，否则设置已有属性。
       const type = hasProperty(target, key) ? TriggerType.SET : TriggerType.ADD;
 
@@ -279,9 +296,17 @@ export function watch(source, cb, options) {
 }
 
 export function reactive(obj) {
-  return createReactive(obj)
+  return createReactive(obj);
 }
 
 export function shallowReactive(obj) {
-  return createReactive(obj, true)
+  return createReactive(obj, true);
+}
+
+export function shallowReadonly(obj) {
+  return createReactive(obj, true, true);
+}
+
+export function readonly(obj) {
+  return createReactive(obj, false, true);
 }
