@@ -4,6 +4,7 @@ const p = Promise.resolve(); // 创建一个promise实例，我们用它将一�
 let isFlushing = false;
 const effectStack = [];
 const bucket = new WeakMap(); // bucket是一个多个data数据的weakMap
+const reactivityMap = new Map(); // 定义一个map实例，存储原始对象与代理对象的映射，用于调用数组api时判断对象类型的是否一样（因为每次reactive都是一个新的proxy）
 
 const TriggerType = {
   SET: "SET",
@@ -331,7 +332,12 @@ export function watch(source, cb, options) {
 }
 
 export function reactive(obj) {
-  return createReactive(obj);
+  // 判断是否已添加该对象的代理，如果已存在则不再重新代理
+  const existionProxy = reactivityMap.get(obj);
+  if (existionProxy) return existionProxy;
+  const proxy = createReactive(obj);
+  reactivityMap.set(obj, proxy);
+  return proxy;
 }
 
 export function shallowReactive(obj) {
