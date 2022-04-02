@@ -13,7 +13,7 @@ const TriggerType = {
   DELETE: "DELETE",
 };
 
-// 对象新增属性或删除属性时需要建立响应式联系所关联的ke
+// 对象新增属性或删除属性时需要建立响应式联系所关联的key
 const __ITERATOR_KEY__ = Symbol();
 
 // 由于proxy数组时，proxy的数组的项和原数组内的每一个项在某些方法可能表现得不一样，需要重写数组api
@@ -42,7 +42,7 @@ function isFalsy(method, value) {
     // undefined的情况
     case "find":
     case "findLast":
-      return undefined;
+      return value === undefined;
     // 空数组的情况
     case "filter":
       return value.length === 0;
@@ -95,6 +95,7 @@ function flushJob() {
     isFlushing = false;
   });
 }
+
 function track(target, key) {
   // 没有活跃的副作用函数或者不允许追踪时直接返回
   if (!activeEffectFn || !shouldTrack) return;
@@ -174,6 +175,7 @@ function trigger(target, key, type, newValue) {
     }
   });
 }
+
 // 清理挂载到effectFn上对于effectFn的依赖
 function cleanup(effectFn) {
   for (let i = 0; i < effectFn.deps.length; i++) {
@@ -282,6 +284,7 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
     },
   });
 }
+
 // 执行副作用函数所需要的函数
 export function effect(fn, options = {}) {
   // 定义一个函数用来执行副作用函数
