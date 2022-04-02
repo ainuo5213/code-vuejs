@@ -1,20 +1,28 @@
 import { reactive, effect, shallowReactive, readonly } from "./reactivity.js";
 
-const obj = {
-  foo: {
-    bar: 2,
-  },
-};
-const data = readonly(obj);
-
+const arr = reactive(["foo", "bar"]);
 effect(() => {
-  console.log(data.foo);
+  for (const key of arr) {
+    console.log(key);
+  }
 });
+window.arr = arr;
 
-setTimeout(() => {
-  data.foo.bar = 222;
-  delete data.foo.bar;
-}, 2000);
+// const obj = {
+//   foo: {
+//     bar: 2,
+//   },
+// };
+// const data = readonly(obj);
+
+// effect(() => {
+//   console.log(data.foo);
+// });
+
+// setTimeout(() => {
+//   data.foo.bar = 222;
+//   delete data.foo.bar;
+// }, 2000);
 
 // const obj = {};
 // const proto = { bar: 1 };

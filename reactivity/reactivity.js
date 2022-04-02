@@ -44,9 +44,10 @@ function track(target, key) {
   // 将deps合activeEffectFn.deps添加关联
 }
 
-function trigger(target, key, type) {
+function trigger(target, key, type, newValue) {
   const depsMap = bucket.get(target);
   if (!depsMap) return;
+
   const effects = depsMap.get(key);
   const effectsToRun = new Set(effects);
 
@@ -72,6 +73,30 @@ function trigger(target, key, type) {
           effectsToRun.add(effect);
         }
       });
+  }
+  // 操作类型为add且目标为数组时，应取出依赖于length的副作用函数到effectsToRun
+  if (type === TriggerType.ADD && Array.isArray(target)) {
+    const lengthEffects = depsMap.get("length");
+    lengthEffects &&
+      lengthEffects.forEach((effect) => {
+        if (effect !== activeEffectFn) {
+          effectsToRun.add(effect);
+        }
+      });
+  }
+
+  // 操作目标是数组，且操作的是length属性，需要把原来的副作用函数中index大于newValue(新的length)的数组项所对应的副作用函数放到effectsToRun
+  if (Array.isArray(target) && key === "length") {
+    depsMap.forEach((effects, key) => {
+      console.log(key, newValue);
+      if (key >= newValue) {
+        effects.forEach((effect) => {
+          if (effect !== activeEffectFn) {
+            effectsToRun.add(effect);
+          }
+        });
+      }
+    });
   }
 
   effectsToRun.forEach((effectFn) => {
@@ -102,6 +127,7 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
         console.warn(`property ${key} is readonly`);
         return true;
       }
+
       // 被操作的属性是否是对象自己的属性
       const hasKey = hasProperty(target, key);
 
@@ -119,8 +145,10 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
         return target;
       }
       const res = Reflect.get(target, key, receiver);
-      // 只有不是只读的时候才建立副作用函数与以来的关系
-      if (!isReadonly) {
+
+      // 不是只读的时候才建立副作用函数与以来的关系
+      // key如果是symbol类型也不能建立响应式联系，因为symbol不能用于比较、计算等
+      if (!isReadonly && typeof key !== "symbol") {
         // 记录依赖
         track(target, key);
       }
@@ -142,7 +170,8 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
       return Reflect.has(target, key, receiver);
     },
     ownKeys(target) {
-      track(target, __ITERATOR_KEY__);
+      // 如果目标是数组的话，用for in循环时监听，用length属性作为key建立响应式联系
+      track(target, Array.isArray(target) ? "length" : __ITERATOR_KEY__);
       return Reflect.ownKeys(target);
     },
     set(target, key, newValue, receiver) {
@@ -151,8 +180,14 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
         console.warn(`property ${key} is readonly`);
         return true;
       }
-      // 如果属性不存在，则说明是在添加属性，否则设置已有属性。
-      const type = hasProperty(target, key) ? TriggerType.SET : TriggerType.ADD;
+      // 判断操作类型：对于数组，如果操作的长度小于目标当前长度则为set，否则为add；对于对象，如果操作的属性存在于该对象，则为set，否则为add
+      const type = Array.isArray(target)
+        ? Number(key) < target.length
+          ? TriggerType.SET
+          : TriggerType.ADD
+        : hasProperty(target, key)
+        ? TriggerType.SET
+        : TriggerType.ADD;
 
       // 使用Reflect.set避免魔法
       const oldValue = Reflect.get(target, key);
@@ -166,7 +201,7 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
           (oldValue === oldValue || newValue === newValue)
         ) {
           // 执行副作用
-          trigger(target, key, type);
+          trigger(target, key, type, newValue);
         }
       }
 
