@@ -4,17 +4,6 @@ const p = Promise.resolve(); // 创建一个promise实例，我们用它将一�
 let isFlushing = false;
 const effectStack = [];
 const bucket = new WeakMap(); // bucket是一个多个data数据的weakMap
-const data = {
-  text: "hello world",
-  ok: true,
-  foo: 3,
-  a: 0,
-  b: 1,
-  get bar() {
-    console.log(this);
-    return this.foo;
-  },
-};
 
 const TriggerType = {
   SET: "SET",
@@ -22,46 +11,6 @@ const TriggerType = {
   DELETE: "DELETE",
 };
 const __ITERATOR_KEY__ = Symbol();
-const obj = new Proxy(data, {
-  deleteProperty(target, key) {
-    // 被操作的属性是否是对象自己的属性
-    const hasKey = hasProperty(target, key);
-
-    // 利用Reflect.deleteProperty完成属性的删除
-    const res = Reflect.deleteProperty(target, key);
-    if (hasKey && res) {
-      // 只有被删除的属性是自身的属性且成功删除时才触发更新
-      trigger(target, key, TriggerType.DELETE);
-    }
-
-    return res;
-  },
-  get(target, key, receiver) {
-    // 记录依赖
-    track(target, key);
-
-    return Reflect.get(target, key, receiver);
-  },
-  has(target, key, receiver) {
-    track(target, key);
-    return Reflect.has(target, key, receiver);
-  },
-  ownKeys(target) {
-    track(target, __ITERATOR_KEY__);
-    return Reflect.ownKeys(target);
-  },
-  set(target, key, newValue, receiver) {
-    // 如果属性不存在，则说明是在添加属性，否则设置已有属性。
-    const type = hasProperty(target, key) ? TriggerType.SET : TriggerType.ADD;
-
-    // 使用Reflect.set避免魔法
-    const res = Reflect.set(target, key, newValue, receiver);
-    // 执行副作用
-    trigger(target, key, type);
-
-    return res;
-  },
-});
 
 function hasProperty(target, key) {
   return Object.prototype.hasOwnProperty.call(target, key);
@@ -142,8 +91,74 @@ function cleanup(effectFn) {
   }
   effectFn.deps.length = 0;
 }
+
+// 接收一个参数isShallow，代表是否浅响应式，默认为false
+function createReactive(obj, isShallow = false) {
+  return new Proxy(obj, {
+    deleteProperty(target, key) {
+      // 被操作的属性是否是对象自己的属性
+      const hasKey = hasProperty(target, key);
+
+      // 利用Reflect.deleteProperty完成属性的删除
+      const res = Reflect.deleteProperty(target, key);
+      if (hasKey && res) {
+        // 只有被删除的属性是自身的属性且成功删除时才触发更新
+        trigger(target, key, TriggerType.DELETE);
+      }
+
+      return res;
+    },
+    get(target, key, receiver) {
+      if (key === "raw") {
+        return target;
+      }
+      const res = Reflect.get(target, key, receiver);
+      // 记录依赖
+      track(target, key);
+      if (isShallow) {
+        return res;
+      }
+
+      if (typeof res === "object" && res !== null) {
+        return reactive(res);
+      }
+
+      return res;
+    },
+    has(target, key, receiver) {
+      track(target, key);
+      return Reflect.has(target, key, receiver);
+    },
+    ownKeys(target) {
+      track(target, __ITERATOR_KEY__);
+      return Reflect.ownKeys(target);
+    },
+    set(target, key, newValue, receiver) {
+      // 如果属性不存在，则说明是在添加属性，否则设置已有属性。
+      const type = hasProperty(target, key) ? TriggerType.SET : TriggerType.ADD;
+
+      // 使用Reflect.set避免魔法
+      const oldValue = Reflect.get(target, key);
+      const res = Reflect.set(target, key, newValue, receiver);
+
+      // target === receiver.raw 说明receiver就是target的代理对象，此时不触发其proto的trigger，只触发child的trigger，保证触发一次
+      if (target === receiver.raw) {
+        // 只有当新值和旧值不全等时且都不是NaN时才触发响应
+        if (
+          oldValue !== newValue &&
+          (oldValue === oldValue || newValue === newValue)
+        ) {
+          // 执行副作用
+          trigger(target, key, type);
+        }
+      }
+
+      return res;
+    },
+  });
+}
 // 执行副作用函数所需要的函数
-function effect(fn, options = {}) {
+export function effect(fn, options = {}) {
   // 定义一个函数用来执行副作用函数
   const effectFn = () => {
     cleanup(effectFn); // 每次执行副作用之前清空当前副作用函数所关联的依赖
@@ -166,7 +181,7 @@ function effect(fn, options = {}) {
   return effectFn; // 将包装的副作用函数返回，这样我们可以通过执行他来获得真正的副作用函数的返回值
 }
 
-function computed(getter) {
+export function computed(getter) {
   let value; // 上一次计算的结果进行缓存
   let dirty = true; // dirty标志位，用来标识值是否已经过期，如果过期就需要重新计算
   const effectFn = effect(getter, {
@@ -194,7 +209,7 @@ function computed(getter) {
   return obj;
 }
 
-function traverse(source, seen = new Set()) {
+export function traverse(source, seen = new Set()) {
   // 如果读取的数据是原始值，或者已经被读取过了，则不再读取（读取的过程就是在访问他，达到track的目的）
   if (typeof source !== "object" || source === null || seen.has(source)) {
     return;
@@ -210,7 +225,7 @@ function traverse(source, seen = new Set()) {
   return source;
 }
 
-function watch(source, cb, options) {
+export function watch(source, cb, options) {
   let getter;
 
   // 如果source是一个function，则认为是一个getter，用户想单独监听某个属性改变，而非一整个对象
@@ -263,79 +278,10 @@ function watch(source, cb, options) {
   }
 }
 
-effect(() => {
-  for (const key in obj) {
-    console.log(key);
-  }
-});
+export function reactive(obj) {
+  return createReactive(obj)
+}
 
-// function sleep() {
-//   return new Promise((resolve) => {
-//     setTimeout(resolve, 3000);
-//   });
-// }
-
-// let finalData;
-// watch(
-//   () => obj.foo,
-//   async (newValue, oldValue, onInvalidate) => {
-//     let expired = false;
-//     onInvalidate(() => {
-//       expired = true;
-//     });
-//     await sleep();
-
-//     // 如果当前副作用周期已过期则舍弃其结果，只要未过期时的值
-//     if (!expired) {
-//       finalData = newValue;
-//     }
-//     console.log(`数据发生了变化：${oldValue} => ${newValue}`);
-//   },
-//   {
-//     immediate: false,
-//     // 回调函数会在watch创建时立即执行一次
-//     flush: "sync", // 还可指定 pre | sync
-//   }
-// );
-
-// const subRes = computed(() => {
-//   console.log(1111);
-//   return obj.a + obj.b;
-// });
-
-// effect(() => {
-//   console.log(subRes.value);
-// });
-
-// effect(
-//   () => {
-//     console.log(obj.foo);
-//   },
-//   {
-//     // 调度器scheduler是一个函数
-//     scheduler(fn) {
-//       jobQueue.add(fn);
-//       flushJob();
-//     },
-//     lazy: true, // 指定了lazy这个副作用函数不会马上执行
-//   }
-// );
-
-// obj.foo = "foo1";
-// obj.foo = "foo2";
-// obj.foo = "foo3";
-// console.log('结束了')
-// let tmp1, tmp2;
-// effect(() => obj.foo += 1); // 这里会引起无限递归，因为再obj.foo取值时收集依赖，而在赋值时trigger变化时会执行已收集的副作用函数，但是该副作用函数还未运行完毕，导致自身无限递归
-// effect(function effectFn1() {
-//     console.log('effectFn1 执行');
-//     effect(function effectFn2() {
-//         console.log('effectFn2 执行');
-//         tmp1 = obj.bar;
-//     })
-//     document.body.innerText = obj.ok ? obj.text : 'not';
-//     tmp2 = obj.foo
-// });
-// setTimeout(() => {
-//     obj.text = "hello vue3"
-// }, 2000)
+export function shallowReactive(obj) {
+  return createReactive(obj, true)
+}
