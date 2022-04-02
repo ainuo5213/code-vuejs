@@ -1,17 +1,82 @@
 let activeEffectFn;
+let isFlushing = false;
 const jobQueue = new Set(); // 利用Set数据结构自动去重的功能
 const p = Promise.resolve(); // 创建一个promise实例，我们用它将一个任务添加到微任务队列
-let isFlushing = false;
 const effectStack = [];
 const bucket = new WeakMap(); // bucket是一个多个data数据的weakMap
 const reactivityMap = new Map(); // 定义一个map实例，存储原始对象与代理对象的映射，用于调用数组api时判断对象类型的是否一样（因为每次reactive都是一个新的proxy）
 
+// 触发trigger的方式
 const TriggerType = {
   SET: "SET",
   ADD: "ADD",
   DELETE: "DELETE",
 };
+
+// 对象新增属性或删除属性时需要建立响应式联系所关联的ke
 const __ITERATOR_KEY__ = Symbol();
+
+// 由于proxy数组时，proxy的数组的项和原数组内的每一个项在某些方法可能表现得不一样，需要重写数组api
+const arrayImplQueryMethods = [
+  "includes",
+  "indexOf",
+  "lastIndexOf",
+  "find",
+  "findIndex",
+  "filter",
+  "findLastIndex",
+  "findLast",
+]; // 直接查找对象中的数据所对应的需要重写的数组方法
+const arrayImplUpdateMethods = ["push", "pop", "splice", "unshift", "shift"]; // 涉及到修改原数组长度的数组方法，需要屏蔽掉对length的写入，避免响应式无限循环造成栈溢出
+const arrayImpl = {};
+
+function isFalsy(method, value) {
+  // 判断函数执行的返回结果是否为真
+  switch (method) {
+    // -1的情况
+    case "findIndex":
+    case "indexOf":
+    case "lastIndexOf":
+    case "findLastIndex":
+      return value === -1;
+    // undefined的情况
+    case "find":
+    case "findLast":
+      return undefined;
+    // 空数组的情况
+    case "filter":
+      return value.length === 0;
+  }
+}
+arrayImplQueryMethods.forEach((method) => {
+  const originMethod = Array.prototype[method];
+  arrayImpl[method] = function (...args) {
+    // 这里的this由于外部调用使用的是Reflect.get调用， 所以这里的this是代理对象
+    // 现在代理对象中查找该值的，如果没找到就到原始数组中查找
+    let res = originMethod.apply(this, args);
+    if (isFalsy(method, res)) {
+      res = originMethod.apply(this.raw, args);
+    }
+    return res;
+  };
+});
+
+// 标记是否进行跟踪，默认值为true，允许跟踪
+let shouldTrack = true;
+arrayImplUpdateMethods.forEach((method) => {
+  const originMethod = Array.prototype[method];
+  arrayImpl[method] = function (...args) {
+    // 调用方法前禁止追踪，这样对于数组长度的修改，就不会影响其他副作用函数对于length的读取，造成的死循环
+    shouldTrack = false;
+
+    // 默认行为，先进行数组操作
+    let res = originMethod.apply(this, args);
+
+    // 操作完之后允许追踪
+    shouldTrack = true;
+    return res;
+  };
+});
 
 function hasProperty(target, key) {
   return Object.prototype.hasOwnProperty.call(target, key);
@@ -31,7 +96,8 @@ function flushJob() {
   });
 }
 function track(target, key) {
-  if (!activeEffectFn) return;
+  // 没有活跃的副作用函数或者不允许追踪时直接返回
+  if (!activeEffectFn || !shouldTrack) return;
   let depsMap = bucket.get(target); // depsMap是当前target数据中的key-value形式的Map
   if (!depsMap) {
     bucket.set(target, (depsMap = new Map()));
@@ -89,7 +155,6 @@ function trigger(target, key, type, newValue) {
   // 操作目标是数组，且操作的是length属性，需要把原来的副作用函数中index大于newValue(新的length)的数组项所对应的副作用函数放到effectsToRun
   if (Array.isArray(target) && key === "length") {
     depsMap.forEach((effects, key) => {
-      console.log(key, newValue);
       if (key >= newValue) {
         effects.forEach((effect) => {
           if (effect !== activeEffectFn) {
@@ -142,9 +207,16 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
       return res;
     },
     get(target, key, receiver) {
+      // 如果key为raw，那么返回未代理的对象
       if (key === "raw") {
         return target;
       }
+
+      // 如果目标是数组，且key为存在与arrayImpl的方法时，使用arrayImpl里方法对数据进行处理并返回
+      if (Array.isArray(target) && hasProperty(arrayImpl, key)) {
+        return Reflect.get(arrayImpl, key, receiver);
+      }
+
       const res = Reflect.get(target, key, receiver);
 
       // 不是只读的时候才建立副作用函数与以来的关系

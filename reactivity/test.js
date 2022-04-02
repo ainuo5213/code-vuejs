@@ -1,9 +1,15 @@
 import { reactive, effect, shallowReactive, readonly } from "./reactivity.js";
 
-const obj = { name: "111" };
-const arr = reactive([obj]);
+// const arr = reactive([]);
+// effect(() => {
+//   arr.push(1);
+// });
+// effect(() => {
+//   arr.push(1);
+// });
+const arr = reactive(["foo", "bar"]);
 effect(() => {
-  console.log(arr.includes(obj));
+  console.log(arr.fill(","));
 });
 window.arr = arr;
 
