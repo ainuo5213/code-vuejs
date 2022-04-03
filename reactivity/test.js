@@ -1,5 +1,13 @@
 import { reactive, effect, shallowReactive, readonly } from "./reactivity.js";
 
+const s = new Set([1, 2, 3]);
+const p = reactive(s);
+effect(() => {
+  for (const [key, value] of p) {
+    console.log(key, value);
+  }
+});
+window.p = p;
 // const arr = reactive([]);
 // effect(() => {
 //   arr.push(1);
@@ -7,11 +15,11 @@ import { reactive, effect, shallowReactive, readonly } from "./reactivity.js";
 // effect(() => {
 //   arr.push(1);
 // });
-const arr = reactive(["foo", "bar"]);
-effect(() => {
-  console.log(arr.fill(","));
-});
-window.arr = arr;
+// const arr = reactive(["foo", "bar"]);
+// effect(() => {
+//   console.log(arr.fill(","));
+// });
+// window.arr = arr;
 
 // const obj = {
 //   foo: {

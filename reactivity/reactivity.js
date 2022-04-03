@@ -30,6 +30,110 @@ const arrayImplQueryMethods = [
 const arrayImplUpdateMethods = ["push", "pop", "splice", "unshift", "shift"]; // 涉及到修改原数组长度的数组方法，需要屏蔽掉对length的写入，避免响应式无限循环造成栈溢出
 const arrayImpl = {};
 
+function iterationMethod() {
+  const wrap = (val) =>
+    typeof val === "object" && val !== null ? reactive(val) : val;
+  const target = this.raw;
+  const iterator = target[Symbol.iterator]();
+  track(target, __ITERATOR_KEY__);
+  return {
+    next() {
+      // 手动调用迭代器的next方法得到value和next，如果有value需要做一下reactive响应式
+      const { value, done } = iterator.next();
+      return {
+        value: value ? [wrap(value[0]), wrap(value[1])] : value,
+        done,
+      };
+    },
+    [Symbol.iterator]() {
+      return this;
+    },
+  };
+}
+
+function valueIterationMethod() {
+  const wrap = (val) =>
+    typeof val === "object" && val !== null ? reactive(val) : val;
+  const target = this.raw;
+  const iterator = target[Symbol.iterator]();
+  track(target, __ITERATOR_KEY__);
+  return {
+    next() {
+      // 手动调用迭代器的next方法得到value和next，如果有value需要做一下reactive响应式
+      const { value, done } = iterator.next();
+      return {
+        value: wrap(value),
+        done,
+      };
+    },
+    [Symbol.iterator]() {
+      return this;
+    },
+  };
+}
+
+// set、map的方法重写
+const iteratorImplMethods = {
+  add(key) {
+    const target = this.raw;
+    const hasKey = target.has(key);
+    const res = target.add(key);
+
+    if (!hasKey) {
+      trigger(target, key, TriggerType.ADD);
+    }
+
+    return res;
+  },
+  delete(key) {
+    const target = this.raw;
+    const hasKey = target.has(key);
+    const res = target.delete(key);
+    if (hasKey) {
+      trigger(target, key, TriggerType.DELETE);
+    }
+
+    return res;
+  },
+  get(key) {
+    const target = this.raw; // 读取原始对象
+    const hasKey = target.has(key);
+    track(target, key); // 追踪依赖，建立响应式联系
+    if (hasKey) {
+      const res = target.get(key);
+      // 是对象的话还需再包装一层
+      return typeof res === "object" ? reactive(res) : res;
+    }
+  },
+  set(key, value) {
+    const target = this.raw;
+    const hasKey = target.has(key);
+    const oldValue = target.get(key);
+    const rawValue = value.raw || value; // 这里避免设置到target的value是一个响应式数据，从而污染原始数据
+    target.set(key, rawValue);
+    if (!hasKey) {
+      trigger(key, value, TriggerType.ADD);
+    } else if (
+      oldValue !== value ||
+      (oldValue === oldValue && value === value)
+    ) {
+      trigger(target, key, TriggerType.SET);
+    }
+  },
+  forEach(callback, thisArg) {
+    const wrap = (val) => (typeof val === "object" ? reactive(val) : val);
+    const target = this.raw;
+    track(target, __ITERATOR_KEY__);
+    target.forEach((val, idx) => {
+      // 手动调用callback，避免val是非响应式对象的场合，对于此类情况需要使他变得响应式
+      callback.call(thisArg, wrap(val), wrap(idx), this);
+    });
+  },
+  [Symbol.iterator]: iterationMethod,
+  entries: iterationMethod,
+  values: valueIterationMethod,
+};
+
 function isFalsy(method, value) {
   // 判断函数执行的返回结果是否为真
   switch (method) {
@@ -131,7 +235,14 @@ function trigger(target, key, type, newValue) {
 
   // 只有当操作类型为'ADD'和'DELETE'时，才触发__ITERATOR_KEY__关联的副作用函数重新执行
   // 注：涉及对象属性增删的操作都应触发__ITERATOR_KEY__关联的副作用函数重新执行
-  if (type === TriggerType.ADD || type === TriggerType.DELETE) {
+  if (
+    type === TriggerType.ADD ||
+    type === TriggerType.DELETE ||
+    // 如果操作类型是set，但是对象类型是map（map的set既关心值，也关心键2）
+    // 需要将与之相关的__ITERATOR_KEY__的副作用函数也执行了
+    (type === TriggerType.SET &&
+      Object.prototype.toString.call(target) === "[object Map]")
+  ) {
     // 取得与__ITERATOR_KEY__相关联的副作用函数
     const iterateEffects = depsMap.get(__ITERATOR_KEY__);
     // 将__ITERATOR_KEY__相关的副作用函数也添加到effectsToRun
@@ -186,7 +297,7 @@ function cleanup(effectFn) {
 }
 
 // 接收一个参数isShallow，代表是否浅响应式，默认为false
-// 接收ige参数isReadonly，代表是否只读，默认为false
+// 接收一个参数isReadonly，代表是否只读，默认为false
 function createReactive(obj, isShallow = false, isReadonly = false) {
   return new Proxy(obj, {
     deleteProperty(target, key) {
@@ -214,6 +325,19 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
         return target;
       }
 
+      // 如果读取的是size属性，通过指定第三个参数receiver为原始对象修复问题
+      if (key === "size") {
+        track(target, __ITERATOR_KEY__);
+        return Reflect.get(target, key, target);
+      }
+      if (
+        (Object.prototype.toString.call(target) === "[object Map]" ||
+          Object.prototype.toString.call(target) === "[object Set]") &&
+        hasProperty(iteratorImplMethods, key)
+      ) {
+        return Reflect.get(iteratorImplMethods, key, receiver);
+      }
+
       // 如果目标是数组，且key为存在与arrayImpl的方法时，使用arrayImpl里方法对数据进行处理并返回
       if (Array.isArray(target) && hasProperty(arrayImpl, key)) {
         return Reflect.get(arrayImpl, key, receiver);
@@ -238,7 +362,7 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
         return isReadonly ? readonly(res) : reactive(res);
       }
 
-      return res;
+      return res.bind(target);
     },
     has(target, key, receiver) {
       track(target, key);
