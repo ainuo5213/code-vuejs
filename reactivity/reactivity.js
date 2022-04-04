@@ -362,7 +362,7 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
         return isReadonly ? readonly(res) : reactive(res);
       }
 
-      return res.bind(target);
+      return res;
     },
     has(target, key, receiver) {
       track(target, key);
@@ -405,6 +405,26 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
       }
 
       return res;
+    },
+  });
+}
+
+export function proxyRefs(target) {
+  return new Proxy(target, {
+    get(target, key, receiver) {
+      const value = Reflect.get(target, key, receiver);
+      // 自动脱ref：如果读取的是ref则自动获取其value
+      return value.__v_isRef ? value.value : value;
+    },
+    set(target, key, newValue, receiver) {
+      const value = Reflect.get(target, key, receiver);
+
+      if (value.__v_isRef) {
+        value.value = newValue;
+        return true;
+      }
+
+      return Reflect.set(target, key, newValue, receiver);
     },
   });
 }
@@ -549,4 +569,42 @@ export function shallowReadonly(obj) {
 
 export function readonly(obj) {
   return createReactive(obj, false, true);
+}
+
+export function ref(value) {
+  const wrapper = {
+    value,
+  };
+
+  Reflect.defineProperty(wrapper, "__v_isRef", {
+    value: true,
+  });
+
+  return reactive(wrapper);
+}
+
+export function toRef(obj, key) {
+  const wrapper = {
+    get value() {
+      return obj[key];
+    },
+    set value(val) {
+      obj[key] = val;
+    },
+  };
+
+  Reflect.defineProperty(wrapper, "__v_isRef", {
+    value: true,
+  });
+
+  return wrapper;
+}
+
+export function toRefs(obj) {
+  const ret = {};
+  for (const key in obj) {
+    ret[key] = toRef(obj, key);
+  }
+
+  return ret;
 }

@@ -1,13 +1,23 @@
-import { reactive, effect, shallowReactive, readonly } from "./reactivity.js";
+import { effect, proxyRefs, reactive, ref, toRef, toRefs } from "./reactivity.js";
 
-const s = new Set([1, 2, 3]);
-const p = reactive(s);
+const obj = reactive({ foo: 1, bar: 2 });
+
+const val = proxyRefs({...toRefs(obj)})
+
 effect(() => {
-  for (const [key, value] of p) {
-    console.log(key, value);
-  }
-});
-window.p = p;
+  console.log(val);
+})
+
+window.val = val;
+
+// const s = new Set([1, 2, 3]);
+// const p = reactive(s);
+// effect(() => {
+//   for (const [key, value] of p) {
+//     console.log(key, value);
+//   }
+// });
+// window.p = p;
 // const arr = reactive([]);
 // effect(() => {
 //   arr.push(1);
