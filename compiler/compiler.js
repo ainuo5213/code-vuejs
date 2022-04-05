@@ -177,8 +177,25 @@ export function createRenderer(options) {
     else if (Array.isArray(vnode2.children)) {
       if (Array.isArray(vnode1.children)) {
         //TODO: 如果新旧节点的子节点都是一组节点，这里就涉及到Diff算法，这里为保证功能可用，直接将原子节点清空，再挂载新的
-        vnode1.children.forEach((r) => unmount(r));
-        vnode2.children.forEach((r) => patch(null, r, el));
+        const oldChildren = vnode1.children;
+        const newChildren = vnode2.children;
+        const oldLen = oldChildren.length;
+        const newLen = newChildren.length;
+        const commonLength = Math.min(oldLen, newLen);
+        for (let i = 0; i < commonLength; i++) {
+          patch(oldChildren[i], newChildren[i]);
+        }
+        // 如果newLen大于oldLen，说明要增添新节点
+        if (newLen > oldLen) {
+          for (let i = commonLength; i < newLen; i++) {
+            patch(null, newChildren[i], el);
+          }
+        } else if (oldLen > newLen) {
+          // oldLen大于newLen，说明要卸载原来的节点
+          for (let i = commonLength; i < oldLen; i++) {
+            unmount(oldChildren[i]);
+          }
+        }
       } else {
         // 其他不符合的情况，就节点奥么是文本节点，要么不存在，则需要把节点内容清空，然后挂载新节点的children即可
         setElementText(el, "");

@@ -5,26 +5,6 @@ import {
   Fragment,
 } from "./compiler.js";
 
-const vnode = {
-  type: "div",
-  props: {
-    class: normalizeClass({
-      div: true,
-      active: true,
-    }),
-  },
-  children: [
-    {
-      type: "p",
-      props: {
-        onClick(e) {
-          bol.value = true;
-        },
-      },
-      children: "text",
-    },
-  ],
-};
 const renderer = createRenderer({
   createElement(tag) {
     return document.createElement(tag);
@@ -94,7 +74,7 @@ const renderer = createRenderer({
       el.setAttribute(propKey, nextValue);
     }
   },
-  
+
   setText(el, text) {
     el.nodeValue = text;
   },
@@ -116,8 +96,6 @@ const renderer = createRenderer({
   },
 });
 
-renderer.render(vnode, document.querySelector("#app"));
-
 const newVNode = {
   type: "ul",
   props: {
@@ -127,14 +105,9 @@ const newVNode = {
     }),
   },
   children: [
-    {
-      type: Fragment,
-      children: [
-        { type: "li", children: "1" },
-        { type: "li", children: "2" },
-        { type: "li", children: "3" },
-      ],
-    },
+    { type: "li", children: "1" },
+    { type: "li", children: "2" },
+    { type: "li", children: "3" },
   ],
 };
 renderer.render(newVNode, document.querySelector("#app"));
@@ -148,15 +121,10 @@ const newVNode1 = {
     }),
   },
   children: [
-    {
-      type: Fragment,
-      children: [
-        { type: "li", children: "1" },
-        { type: "li", children: "2" },
-        { type: "li", children: "3" },
-        { type: "li", children: "4" },
-      ],
-    },
+    { type: "li", children: "1" },
+    { type: "li", children: "2" },
+    { type: "li", children: "3" },
+    { type: "li", children: "4" },
   ],
 };
 renderer.render(newVNode1, document.querySelector("#app"));
