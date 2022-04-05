@@ -224,6 +224,17 @@ export function createRenderer(options) {
             patch(null, newVNode, el, anchor);
           }
         }
+
+        // 更新操作结束之后，检查一遍oldChildren，找到oldChildren中key在newChildren中没有的节点，将其删除
+        for (let i = 0; i < oldChildren.length; i++) {
+          const oldVNode = oldChildren[i];
+          const hasExist = newChildren.find(
+            (vnode) => vnode.key === oldVNode.key
+          );
+          if (!hasExist) {
+            unmount(oldVNode);
+          }
+        }
       } else {
         // 其他不符合的情况，就节点奥么是文本节点，要么不存在，则需要把节点内容清空，然后挂载新节点的children即可
         setElementText(el, "");
