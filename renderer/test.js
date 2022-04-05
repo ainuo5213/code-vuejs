@@ -3,7 +3,7 @@ import {
   shouldSetAsProps,
   normalizeClass,
   Fragment,
-} from "./compiler.js";
+} from "./renderer.js";
 
 const renderer = createRenderer({
   createElement(tag) {
@@ -97,34 +97,24 @@ const renderer = createRenderer({
 });
 
 const newVNode = {
-  type: "ul",
-  props: {
-    class: normalizeClass({
-      div: true,
-      active: true,
-    }),
-  },
+  type: "div",
   children: [
-    { type: "li", children: "1" },
-    { type: "li", children: "2" },
-    { type: "li", children: "3" },
+    { type: "p", children: "1", key: 1 },
+    { type: "p", children: "2", key: 2 },
+    { type: "p", children: "hello", key: 3 },
   ],
 };
 renderer.render(newVNode, document.querySelector("#app"));
 
 const newVNode1 = {
-  type: "ul",
-  props: {
-    class: normalizeClass({
-      div: true,
-      active: true,
-    }),
-  },
+  type: "div",
   children: [
-    { type: "li", children: "1" },
-    { type: "li", children: "2" },
-    { type: "li", children: "3" },
-    { type: "li", children: "4" },
+    { type: "p", children: "world", key: 3 },
+    { type: "p", children: "1", key: 1 },
+    { type: "p", children: "4", key: 4 },
+    // { type: "p", children: "2", key: 2 },
   ],
 };
-renderer.render(newVNode1, document.querySelector("#app"));
+setTimeout(() => {
+  renderer.render(newVNode1, document.querySelector("#app"));
+}, 5000);

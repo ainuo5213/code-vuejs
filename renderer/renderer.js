@@ -87,7 +87,7 @@ export function createRenderer(options) {
     container._vnode = vnode;
   }
 
-  function patch(vnode1, vnode2, container) {
+  function patch(vnode1, vnode2, container, anchor) {
     // 如果vnode1存在且两个的type不同，则要卸载原老节点
     if (vnode1 && vnode1.type !== vnode2.type) {
       unmount(vnode1); // 卸载老节点
@@ -99,7 +99,8 @@ export function createRenderer(options) {
     if (typeof type === "string") {
       // 如果vnode1不存在，意味着不存在旧节点，处于mount阶段，否则处于更新阶段
       if (!vnode1) {
-        mountElement(vnode2, container);
+        // 将锚点元素传递给mountElement
+        mountElement(vnode2, container, anchor);
       } else {
         patchElement(vnode1, vnode2);
       }
@@ -179,21 +180,48 @@ export function createRenderer(options) {
         //TODO: 如果新旧节点的子节点都是一组节点，这里就涉及到Diff算法，这里为保证功能可用，直接将原子节点清空，再挂载新的
         const oldChildren = vnode1.children;
         const newChildren = vnode2.children;
-        const oldLen = oldChildren.length;
-        const newLen = newChildren.length;
-        const commonLength = Math.min(oldLen, newLen);
-        for (let i = 0; i < commonLength; i++) {
-          patch(oldChildren[i], newChildren[i]);
-        }
-        // 如果newLen大于oldLen，说明要增添新节点
-        if (newLen > oldLen) {
-          for (let i = commonLength; i < newLen; i++) {
-            patch(null, newChildren[i], el);
+        let lastIndex = 0;
+        for (let i = 0; i < newChildren.length; i++) {
+          const newVNode = newChildren[i];
+          let j = 0;
+          let find = false; // 是否找到相同key的节点，如果没有代表要新增
+          for (j; j < oldChildren.length; j++) {
+            const oldVNode = oldChildren[j];
+            // 找到key相同的节点，调用patch更新节点
+            if (newVNode.key === oldVNode.key) {
+              find = true;
+              patch(oldVNode, newVNode, el);
+              if (j < lastIndex) {
+                // 如果当前找到的节点在旧children中的索引小于最大索引值lastIndex，说明该节点对应的真实DOM需要移动
+                // 如果当前vnode的索引值大于lastIndex，不需要移动，因为其他节点必然有小于他的，让其他节点移动
+                // 先获取newvNode取得前一个vnode
+                const prevNode = newChildren[i - 1];
+                // 如果prevNode不存在，则说明当前newVNode是第一个节点，它不需要移动
+                if (prevNode) {
+                  // 由于需要将newVNode对应的真实DOM移动到prevNode所对应的真实DOM后，需要获取prevNode所对应的真实DOM的下一个兄弟节点，插入到该兄弟节点前
+                  const anchor = prevNode.el.nextSibling;
+                  insert(newVNode.el, el, anchor);
+                }
+              } else {
+                lastIndex = j; // 始终保持lastIndex是当前最大的索引，如果在该轮中，查找到的老索引小于当前最大的索引，则表示要移动
+              }
+              break;
+            }
           }
-        } else if (oldLen > newLen) {
-          // oldLen大于newLen，说明要卸载原来的节点
-          for (let i = commonLength; i < oldLen; i++) {
-            unmount(oldChildren[i]);
+          // 找了一轮发现还没找到要新增DOM
+          if (!find) {
+            // 为了将节点挂载到正确位置，需要获取该新节点的前一个vnode节点
+            const prevNode = newChildren[i - 1];
+            let anchor = null;
+            if (prevNode) {
+              // 如果有前一个vnode节点，则使用它的下一个兄弟节点作为锚点元素
+              anchor = prevNode.el.nextSibling;
+            } else {
+              // 如果没有前一个节点，说明当前节点是第一个节点，用当前el的firstChild作为锚点元素
+              anchor = el.firstChild;
+            }
+
+            patch(null, newVNode, el, anchor);
           }
         }
       } else {
@@ -214,7 +242,7 @@ export function createRenderer(options) {
     }
   }
 
-  function mountElement(vnode, container) {
+  function mountElement(vnode, container, anchor) {
     // 创建dom元素，并将dom元素挂载到vnode.el
     const el = (vnode.el = createElement(vnode.type));
 
@@ -236,8 +264,8 @@ export function createRenderer(options) {
       });
     }
 
-    // 挂载元素
-    insert(el, container);
+    // 挂载元素时可以指定锚点元素
+    insert(el, container, anchor);
   }
 
   return {
