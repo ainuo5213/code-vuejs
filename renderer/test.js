@@ -101,7 +101,8 @@ const newVNode = {
   children: [
     { type: "p", children: "1", key: 1 },
     { type: "p", children: "2", key: 2 },
-    { type: "p", children: "hello", key: 3 },
+    { type: "p", children: "3", key: 3 },
+    { type: "p", children: "4", key: 4 },
   ],
 };
 renderer.render(newVNode, document.querySelector("#app"));
@@ -109,12 +110,12 @@ renderer.render(newVNode, document.querySelector("#app"));
 const newVNode1 = {
   type: "div",
   children: [
-    { type: "p", children: "world", key: 3 },
-    { type: "p", children: "1", key: 1 },
+    { type: "p", children: "2", key: 2 },
     { type: "p", children: "4", key: 4 },
-    // { type: "p", children: "2", key: 2 },
+    { type: "p", children: "1", key: 1 },
+    { type: "p", children: "3", key: 3 },
   ],
 };
 setTimeout(() => {
   renderer.render(newVNode1, document.querySelector("#app"));
-}, 5000);
+}, 2000);
