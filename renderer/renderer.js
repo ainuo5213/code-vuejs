@@ -228,7 +228,7 @@ export function createRenderer(options) {
         oldEndVNode = oldChildren[--oldEndIdx];
         newEndVNode = newChildren[--newEndIdx];
       } else if (oldStartVNode.key === newEndVNode.key) {
-        // 第二步 oldStartVNode和newEndVNode比较，如果相同，则表示oldStartVNode节点可复用，只需要把oldVNode的el插入到oldEndVNode的el的下一个兄弟节点前
+        // 第二步 oldStartVNode和newEndVNode比较，如果相同，则表示oldStartVNode节点可复用，只需要把oldStartVNode的el插入到oldEndVNode的el的下一个兄弟节点前
         patch(oldStartVNode, newEndVNode, el);
         insert(oldStartVNode.el, el, oldEndVNode.el.nextSibling);
 
