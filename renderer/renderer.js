@@ -59,6 +59,48 @@ function unmount(vnode) {
   }
 }
 
+// 寻找最长递增子序列
+function getSequence(arr) {
+  const p = arr.slice();
+  const result = [0];
+  let i, j, u, v, c;
+  const len = arr.length;
+  for (let i = 0; i < len; i++) {
+    const arrI = arr[i];
+    if (arrI !== 0) {
+      j = result[result.length - 1];
+      if (arr[j] < arrI) {
+        p[i] = j;
+        continue;
+      }
+      u = 0;
+      v = result.length - 1;
+      while (u < v) {
+        c = ((u + v) / 2) | 0;
+        if (arr[result[c]] < arrI) {
+          u = c + 1;
+        } else {
+          v = c;
+        }
+      }
+      if (arrI < arr[result[u]]) {
+        if (u > 0) {
+          p[i] = result[u - 1];
+        }
+        result[u] = i;
+      }
+    }
+  }
+  u = result.length;
+  v = result[u - 1];
+  while (u-- > 0) {
+    result[u] = v;
+    v = p[v];
+  }
+
+  return result;
+}
+
 // 封装操作dom的api到options
 export function createRenderer(options) {
   const {
@@ -196,8 +238,135 @@ export function createRenderer(options) {
     }
   }
 
-  // 双端diff算法
+  // 快速diff算法
   function patchKeyedChildren(vnode1, vnode2, el) {
+    const oldChildren = vnode1.children;
+    const newChildren = vnode2.children;
+
+    let j = 0;
+    let oldVNode = oldChildren[j];
+    let newVNode = newChildren[j];
+    // 从前向后遍历，直到遇到不同的key为止，先把头部相同key的处理掉
+    while (oldVNode.key === newVNode.key) {
+      patch(oldVNode, newVNode, el);
+      j++;
+      oldVNode = oldChildren[j];
+      newVNode = newChildren[j];
+    }
+
+    let oldEnd = oldChildren.length - 1;
+    let newEnd = newChildren.length - 1;
+    oldVNode = oldChildren[oldEnd];
+    newVNode = newChildren[newEnd];
+    // 从后向前遍历，直到遇到不同的key为止，再把尾部相同key的处理掉
+    while (oldVNode.key === newVNode.key) {
+      patch(oldVNode, newVNode, el);
+      oldEnd--;
+      newEnd--;
+      oldVNode = oldChildren[oldEnd];
+      newVNode = newChildren[newEnd];
+    }
+
+    // oldEnd < j，说明处理过程中，所有的旧节点都处理完了
+    // newEnd >= j，说明处理过程中，还有未被处理的新节点
+    if (j > oldEnd && j <= newEnd) {
+      const anchorIndex = newEnd + 1;
+
+      // 锚点元素为未处理的新的一组节点的尾部节点，以该节点作为基准插入到该节点前
+      const anchor =
+        anchorIndex < newChildren.length ? newChildren[anchorIndex].el : null;
+
+      // j到newEnd之间的节点需要新增到对应锚点元素之前
+      while (j <= newEnd) {
+        patch(null, newChildren[j++], el, anchor);
+      }
+    }
+    // j大于newEnd，但小于oldEnd，说明，旧节点多了，需要unmount
+    else if (j > newEnd && j <= oldEnd) {
+      while (j <= oldEnd) {
+        unmount(oldChildren[j++]);
+      }
+    }
+    // 其他情况，表示非理想情况，可能乱序的，可能有新增，也可能有删除，也可能有移动
+    else {
+      // 填充source数据（source是存储剩余未处理的新的一组子节点在旧的一组子节点中的索引）
+      const count = newEnd - j + 1;
+      const source = new Array(count).fill(-1);
+      const oldStart = j;
+      const newStart = j;
+      let moved = false; // 是否需要移动节点
+      let pos = 0;
+
+      // 建立一张索引表，存储未处理的新节点每个key所在未处理的新节点中的索引；
+      const keyIndex = {};
+      let patched = 0; // 代表更新过的节点数量
+      for (let i = newStart; i <= newEnd; i++) {
+        keyIndex[newChildren[i].key] = i;
+      }
+
+      // 遍历未处理的旧节点
+      for (let i = oldStart; i <= oldEnd; i++) {
+        oldVNode = oldChildren[i];
+
+        // 如果已更新的节点大于了要更新的节点数量，说明旧节点多余了，需要卸载
+        if (patched <= count) {
+          const k = keyIndex[oldVNode.key];
+          // 通过索引表找到了该key对应的索引，更新
+          if (typeof k !== "undefined") {
+            newVNode = newChildren[k];
+            patch(oldVNode, newVNode, el);
+            patched++;
+            source[k - newStart] = i; // 设置索引
+            // 如果索引呈现递增趋势，说明不需要移动节点（移动其他节点达到移动的目的），反之需要移动
+            if (k < pos) {
+              moved = true;
+            } else {
+              pos = k; // 始终保持k为当前最大的子序列的最大的那个值的索引
+            }
+          } else {
+            // 没有找到执行umount操作
+            unmount(oldVNode);
+          }
+        } else {
+          unmount(oldVNode);
+        }
+      }
+
+      // 如果需要移动
+      if (moved) {
+        const seq = getSequence(source); // getSequence为寻找最长递增子序列的方法，seq为最长递增子序列的索引数组、
+        let s = seq.length - 1; // s是最长递增子序列的最后一个索引
+        let i = count - 1; // i指向新未处理的一组子节点最后一个元素
+        // 从新的一组未处理的子节点从后向前遍历
+        for (i; i >= 0; i--) {
+          // 没找着新的，需要增加
+          if (source[i] === -1) {
+            const pos = i + newStart; // 需要挂载的新的未处理的子节点的索引
+            const newVNode = newChildren[pos];
+            const nextPos = pos + 1; // 该节点的下一个节点的位置索引
+            const anchor =
+              nextPos < newChildren.length ? newChildren[nextPos].el : null; // 找到锚点元素，锚元素时下一个节点，插入到下一个节点之前
+            patch(null, newVNode, el, anchor);
+          } else if (i !== seq[s]) {
+            // 如果节点的索引和当前最长自增子序列的最后一个元素所对应的值不同，说明该节点需要移动
+            // 以下为找到该节点和该节点下一个节点的位置将下一个节点作为锚点元素
+            const pos = i + newStart;
+            const newVNode = newChildren[pos];
+            const nextPos = pos + 1;
+            const anchor =
+              nextPos < newChildren.length ? newChildren[nextPos].el : null;
+            insert(newVNode.el, el, anchor);
+          } else {
+            // 当i === seq[s]时，说明该节点不需要移动，只要让s指向下一个位置
+            s--;
+          }
+        }
+      }
+    }
+  }
+
+  // 双端diff算法
+  function patchKeyedChildrenDE(vnode1, vnode2, el) {
     const oldChildren = vnode1.children;
     const newChildren = vnode2.children;
 
@@ -246,7 +415,7 @@ export function createRenderer(options) {
         const idxInOld = oldChildren.findIndex(
           (r) => r && r.key === newStartVNode.key
         );
-        console.log(newStartVNode, idxInOld)
+        console.log(newStartVNode, idxInOld);
         // 找到了可复用的节点
         if (idxInOld > 0) {
           // vnodeToMove就是对应vnode需要移动的节点
@@ -282,7 +451,7 @@ export function createRenderer(options) {
   }
 
   // 简单diff算法
-  function patchKeyedChildren_simple(vnode1, vnode2, el) {
+  function patchKeyedChildrenSimple(vnode1, vnode2, el) {
     //TODO: 如果新旧节点的子节点都是一组节点，这里就涉及到Diff算法，这里为保证功能可用，直接将原子节点清空，再挂载新的
     const oldChildren = vnode1.children;
     const newChildren = vnode2.children;
