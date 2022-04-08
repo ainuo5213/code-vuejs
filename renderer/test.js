@@ -96,30 +96,41 @@ const renderer = createRenderer({
   },
 });
 
-const newVNode = {
-  type: "div",
-  children: [
-    { type: "p", children: "1", key: 1 },
-    { type: "p", children: "2", key: 2 },
-    { type: "p", children: "3", key: 3 },
-    { type: "p", children: "4", key: 4 },
-    { type: "p", children: "6", key: 6 },
-    { type: "p", children: "5", key: 5 },
-  ],
+const MyComponent = {
+  name: "MyComponent",
+  props: {
+    title: String,
+  },
+  data() {
+    return {
+      foo: "hello word from current component",
+    };
+  },
+  render() {
+    return {
+      type: "div",
+      children: `foo的值是：${this.foo}，${this.title}，${this.testFoo}`,
+    };
+  },
+  beforeCreate() {
+    console.log("beforeCreate");
+  },
+  created() {
+    console.log("created");
+  },
+  setup(props, { attrs }) {
+    return {
+      testFoo: "hello test from setup",
+    };
+  },
 };
-renderer.render(newVNode, document.querySelector("#app"));
 
-const newVNode1 = {
-  type: "div",
-  children: [
-    { type: "p", children: "1", key: 1 },
-    { type: "p", children: "3", key: 3 },
-    { type: "p", children: "4", key: 4 },
-    { type: "p", children: "2", key: 2 },
-    { type: "p", children: "7", key: 7 },
-    { type: "p", children: "5", key: 5 },
-  ],
-};
-setTimeout(() => {
-  renderer.render(newVNode1, document.querySelector("#app"));
-}, 2000);
+renderer.render(
+  {
+    type: MyComponent,
+    props: {
+      title: "hello js from parent",
+    },
+  },
+  document.querySelector("#app")
+);

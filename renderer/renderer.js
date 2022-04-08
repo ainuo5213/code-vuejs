@@ -1,6 +1,11 @@
+import {
+  effect,
+  reactive,
+  shallowReactive,
+  shallowReadonly,
+} from "../reactivity/reactivity.js";
 export const Text = Symbol();
 export const Comment = Symbol();
-export const Component = Symbol();
 export const Fragment = Symbol();
 export function shouldSetAsProps(el, key, value) {
   // 当设置Input的form属性时，该属性是只读的，不能直接设置，只能通过setAttribute设置
@@ -101,6 +106,54 @@ function getSequence(arr) {
   return result;
 }
 
+const queue = new Set();
+let isFlusing = false;
+const p = Promise.resolve();
+
+function queueJob(job) {
+  queue.add(job);
+  if (!isFlusing) {
+    isFlusing = true;
+    p.then(() => {
+      try {
+        queue.forEach((j) => j());
+      } finally {
+        isFlusing = false;
+        queue.clear();
+      }
+    });
+  }
+}
+
+// 从传递给组件的propData中解析出props（组件参数）、attrs（组件属性）
+function resolveProps(options = {}, propsData = {}) {
+  const props = {};
+  const attrs = {};
+  for (const key in propsData) {
+    if (key in options) {
+      // 组件声明接收的props，存到props
+      props[key] = propsData[key];
+    } else {
+      // 组件未声明接收的props，传递到attrs
+      attrs[key] = propsData[key];
+    }
+  }
+
+  return { props, attrs };
+}
+
+function hasPropsChanged(prevProps, nextProps) {
+  const nextKeys = Object.keys(nextProps);
+  if (nextKeys.length !== Object.keys(prevProps).length) {
+    return true;
+  }
+
+  for (let i = 0; i < nextKeys.length; i++) {
+    const key = nextKeys[i];
+    if (nextProps[key] !== prevProps[key]) return true;
+  }
+}
+
 // 封装操作dom的api到options
 export function createRenderer(options) {
   const {
@@ -181,8 +234,141 @@ export function createRenderer(options) {
         // 旧节点vnode1存在，只需更新Fragment的children
         patchChildren(vnode1, vnode2, container);
       }
-    } else {
+    } else if (typeof type === "object") {
+      if (!vnode1) {
+        mountComponent(vnode2, container, anchor);
+      } else {
+        patchComponent(vnode1, vnode2, anchor);
+      }
     }
+  }
+
+  function patchComponent(vnode1, vnode2, anchor) {
+    // 获取组件实例，并让vnode2.Component也指向vnode1.Component
+    const instance = (vnode2.Component = vnode1.Component);
+    // 获取当前组件实例的props数据
+    const { props } = instance;
+    // 如果props变了，则需要更改props
+    if (hasPropsChanged(vnode1.props, vnode2.props)) {
+      // 获取vnode2的props
+      const { props: nextProps } = resolveProps(
+        vnode2.type.props,
+        vnode2.props
+      );
+      // 更改或添加旧组件的props
+      for (const k in nextProps) {
+        props[k] = nextProps[k];
+      }
+
+      // 删除旧组件不存在的prop
+      for (const k in props) {
+        if (!(k in nextProps)) {
+          delete props[k];
+        }
+      }
+    }
+  }
+
+  function mountComponent(vnode, container, anchor) {
+    const componentOptions = vnode.type;
+    const {
+      render,
+      data,
+      beforeCreate,
+      created,
+      beforeMount,
+      mounted,
+      beforeUpdate,
+      updated,
+      setup,
+      props: propOptions,
+    } = componentOptions;
+
+    const { attrs, props } = resolveProps(propOptions, vnode.props); // propOptions是子组件声明接收的props选项，vnode.props是传递给组件的props数据
+    let setupState = null;
+    if (setup) {
+      const setupContext = { attrs }; // setup第二个参数
+      const setupResult = setup(shallowReadonly(props), setupContext); // 执行setup，获取其返回值
+      if (typeof setupResult === "function") {
+        if (render)
+          console.error("setup函数返回值是函数时，render选项将被忽略");
+        render = setupResult;
+      } else {
+        // setup返回值不是函数，则赋值给setupState
+        setupState = setupResult;
+      }
+    }
+
+    // 保存组件实例，以及生命周期，数据等
+    const state = data ? reactive(data()) : null; // 调用data函数得到原始数据，用reactive使其具有响应式
+    const instance = {
+      state,
+      attrs: shallowReactive(attrs), // 注入attrs
+      props: shallowReactive(props), // 注入props
+      isMounted: false,
+      subTree: null,
+    };
+
+    beforeCreate && beforeCreate(); // beforeCreate生命周期
+    vnode.Component = instance;
+
+    // 创建上下文，本质是instance的代理对象
+    const renderContext = new Proxy(instance, {
+      get(t, k, r) {
+        const { state, props, attrs } = t;
+        if (state && k in state) {
+          return state[k];
+        } else if (k in props) {
+          return props[k];
+        } else if (setupState && k in setupState) {
+          // 如果setup返回了一个对象，优先取setup返回的对象里面的值
+          return setupState[k];
+        } else if (k in attrs) {
+          return attrs[k];
+        } else {
+          console.error("不存在哦");
+        }
+      },
+      set(t, k, v, r) {
+        const { state, props } = t;
+        if (state && k in state) {
+          state[k] = v;
+        } else if (k in props) {
+          props[k] = v;
+        } else if (setupState && k in setupState) {
+          // 除了props，如果setup返回了对象，则设置该值
+          setupState[k] = v;
+        } else if (k in attrs) {
+          attrs[k] = v;
+        } else {
+          console.error("不存在哦");
+        }
+      },
+    });
+
+    created && created.call(renderContext); // created生命周期
+    // 定义副作用函数，副作用函数就是执行挂载节点和更新节点的
+    effect(
+      () => {
+        const subTree = render.call(renderContext, renderContext); // 设置render函数的this为state，并传递state到render函数
+        // 如果组件已经mount，则要进行对比旧节点打补丁
+        if (!instance.isMounted) {
+          beforeMount && beforeMount.call(renderContext); // beforeMount生命周期
+          patch(null, subTree, container, anchor);
+          mounted && mounted.call(renderContext); // mounted生命周期
+          instance.isMounted = true;
+        } else {
+          beforeUpdate && beforeUpdate.call(renderContext); // beforeUpdate生命周期
+          patch(instance.subTree, subTree, container, anchor);
+          updated && updated.call(renderContext); // updated生命周期
+        }
+        instance.subTree = subTree;
+      },
+      {
+        // 指定调度器为queueJob，使组件的更新有缓冲
+        scheduler: queueJob,
+      }
+    );
   }
 
   function patchElement(vnode1, vnode2) {
