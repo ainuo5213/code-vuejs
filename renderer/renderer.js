@@ -315,7 +315,7 @@ export function createRenderer(options) {
         // 旧节点vnode1存在，只需更新Fragment的children
         patchChildren(vnode1, vnode2, container);
       }
-    } else if (typeof type === "object") {
+    } else if (typeof type === "object" || typeof type === "function") {
       if (!vnode1) {
         mountComponent(vnode2, container, anchor);
       } else {
@@ -351,7 +351,14 @@ export function createRenderer(options) {
   }
 
   function mountComponent(vnode, container, anchor) {
-    const componentOptions = vnode.type;
+    let componentOptions = vnode.type;
+    const isFunctional = typeof componentOptions === "function";
+    if (isFunctional) {
+      componentOptions = {
+        render: vnode.type,
+        props: vnode.type.props,
+      };
+    }
     let render = componentOptions.render;
     const {
       data,
