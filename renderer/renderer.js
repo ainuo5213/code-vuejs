@@ -60,8 +60,12 @@ function unmount(vnode) {
     const componentOptions = vnode.type;
     const { beforeUnmount, unMounted } = componentOptions;
     const instance = vnode.Component;
-    const { beforeUnmount: beforeUnmountHooks, unMounted: unMountedHooks, context, subTree } =
-      instance;
+    const {
+      beforeUnmount: beforeUnmountHooks,
+      unMounted: unMountedHooks,
+      context,
+      subTree,
+    } = instance;
     beforeUnmountHooks &&
       beforeUnmountHooks.forEach((hook) => hook.call(context));
     beforeUnmount && beforeUnmount.call(context, context);
@@ -74,10 +78,9 @@ function unmount(vnode) {
     vnode.children.forEach((r) => unmount(r));
     return;
   }
-  const el = vnode.el;
-  const parent = el.parentNode;
+  const parent = vnode.el.parentNode;
   if (parent) {
-    parent.removeChild(el);
+    parent.removeChild(vnode.el);
   }
 }
 
@@ -349,8 +352,8 @@ export function createRenderer(options) {
 
   function mountComponent(vnode, container, anchor) {
     const componentOptions = vnode.type;
+    let render = componentOptions.render;
     const {
-      render,
       data,
       beforeCreate,
       created,
@@ -713,7 +716,6 @@ export function createRenderer(options) {
         const idxInOld = oldChildren.findIndex(
           (r) => r && r.key === newStartVNode.key
         );
-        console.log(newStartVNode, idxInOld);
         // 找到了可复用的节点
         if (idxInOld > 0) {
           // vnodeToMove就是对应vnode需要移动的节点

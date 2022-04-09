@@ -1,3 +1,4 @@
+import { defineAsyncComponent } from "./aipComponent.js";
 import { createRenderer, shouldSetAsProps } from "./renderer.js";
 
 const renderer = createRenderer({
@@ -111,32 +112,44 @@ const MyComponent = {
   },
 };
 
-renderer.render(
-  {
-    type: MyComponent,
+const MyComponent1 = defineAsyncComponent({
+  loader: () =>
+    new Promise((resolve) => {
+      resolve({
+        setup() {
+          return () => ({
+            type: "div",
+            children: "this is async component",
+          });
+        },
+      });
+    }),
+  delay: 2000,
+  timeout: 3000,
+  loadingComponent: {
+    setup() {
+      return () => ({
+        type: "div",
+        children: "this is loadingComponent",
+      });
+    },
   },
-  document.querySelector("#app")
-);
-
-const MyComponent1 = {
-  name: "MyComponent",
-  data() {
-    return {
-      foo: "hello word from updated component",
-    };
+  errorComponent: {
+    setup() {
+      return () => ({
+        type: "div",
+        children: "this is errorComponent",
+      });
+    },
   },
-  render() {
-    return {
-      type: "div",
-      children: `foo的值是：${this.foo}`,
-    };
+  onError(retry, fail, retryCount) {
+    if (retryCount <= 3) {
+      retry();
+    } else {
+      fail();
+    }
   },
-  setup(props, { attrs, emit, slots }) {
-    return {
-      testFoo: "hello test from setup",
-    };
-  },
-};
+});
 
 renderer.render(
   {
