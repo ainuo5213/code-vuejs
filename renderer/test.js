@@ -3,6 +3,9 @@ import {
   shouldSetAsProps,
   normalizeClass,
   Fragment,
+  onMounted,
+  onBeforeMount,
+  getCurrentInstance,
 } from "./renderer.js";
 
 const renderer = createRenderer({
@@ -118,7 +121,15 @@ const MyComponent = {
   created() {
     console.log("created");
   },
-  setup(props, { attrs }) {
+  setup(props, { attrs, emit, slots }) {
+    let instance = getCurrentInstance();
+    console.log(instance);
+    onBeforeMount(() => {
+      console.log("111");
+    });
+    onMounted(() => {
+      console.log("111asdasd");
+    });
     return {
       testFoo: "hello test from setup",
     };
@@ -130,6 +141,9 @@ renderer.render(
     type: MyComponent,
     props: {
       title: "hello js from parent",
+      onClick(arg) {
+        console.log(arg);
+      },
     },
   },
   document.querySelector("#app")
