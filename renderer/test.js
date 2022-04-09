@@ -1,12 +1,4 @@
-import {
-  createRenderer,
-  shouldSetAsProps,
-  normalizeClass,
-  Fragment,
-  onMounted,
-  onBeforeMount,
-  getCurrentInstance,
-} from "./renderer.js";
+import { createRenderer, shouldSetAsProps } from "./renderer.js";
 
 const renderer = createRenderer({
   createElement(tag) {
@@ -101,9 +93,6 @@ const renderer = createRenderer({
 
 const MyComponent = {
   name: "MyComponent",
-  props: {
-    title: String,
-  },
   data() {
     return {
       foo: "hello word from current component",
@@ -112,24 +101,10 @@ const MyComponent = {
   render() {
     return {
       type: "div",
-      children: `foo的值是：${this.foo}，${this.title}，${this.testFoo}`,
+      children: `foo的值是：${this.foo}`,
     };
   },
-  beforeCreate() {
-    console.log("beforeCreate");
-  },
-  created() {
-    console.log("created");
-  },
   setup(props, { attrs, emit, slots }) {
-    let instance = getCurrentInstance();
-    console.log(instance);
-    onBeforeMount(() => {
-      console.log("111");
-    });
-    onMounted(() => {
-      console.log("111asdasd");
-    });
     return {
       testFoo: "hello test from setup",
     };
@@ -139,12 +114,33 @@ const MyComponent = {
 renderer.render(
   {
     type: MyComponent,
-    props: {
-      title: "hello js from parent",
-      onClick(arg) {
-        console.log(arg);
-      },
-    },
+  },
+  document.querySelector("#app")
+);
+
+const MyComponent1 = {
+  name: "MyComponent",
+  data() {
+    return {
+      foo: "hello word from updated component",
+    };
+  },
+  render() {
+    return {
+      type: "div",
+      children: `foo的值是：${this.foo}`,
+    };
+  },
+  setup(props, { attrs, emit, slots }) {
+    return {
+      testFoo: "hello test from setup",
+    };
+  },
+};
+
+renderer.render(
+  {
+    type: MyComponent1,
   },
   document.querySelector("#app")
 );

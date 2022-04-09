@@ -56,14 +56,20 @@ export function normalizeClass(...args) {
 // 移除节点
 function unmount(vnode) {
   // 待处理
-  // if (typeof vnode.type === "object") {
-  //   const componentOptions = vnode.type;
-  //   const { beforeUnmount, unMounted } = componentOptions;
-  //   const instance = vnode.Component;
-  //   const { beforeUnmount : beforeUnmountHooks,  unMounted: unMountedHooks } = instance;
-  //   const context = instance.context;
-
-  // }
+  if (typeof vnode.type === "object") {
+    const componentOptions = vnode.type;
+    const { beforeUnmount, unMounted } = componentOptions;
+    const instance = vnode.Component;
+    const { beforeUnmount: beforeUnmountHooks, unMounted: unMountedHooks, context, subTree } =
+      instance;
+    beforeUnmountHooks &&
+      beforeUnmountHooks.forEach((hook) => hook.call(context));
+    beforeUnmount && beforeUnmount.call(context, context);
+    unMountedHooks && unMountedHooks.forEach((hook) => hook.call(context));
+    unMounted && unMounted.call(context, context);
+    unmount(subTree);
+    return;
+  }
   if (vnode.type === Fragment) {
     vnode.children.forEach((r) => unmount(r));
     return;
@@ -217,11 +223,11 @@ export function onBeforeUnmount(fn) {
   }
 }
 
-export function onUnmountd(fn) {
+export function onUnmounted(fn) {
   if (currentInstance) {
     currentInstance.unMounted.push(fn);
   } else {
-    console.error("onUnmountd函数只能在setup函数中调用");
+    console.error("onUnmounted函数只能在setup函数中调用");
   }
 }
 
@@ -468,7 +474,7 @@ export function createRenderer(options) {
             instance.updated.forEach((hook) => hook.call(renderContext)); // 执行setup中onBeforeUpdate钩子函数
           updated && updated.call(renderContext); // updated生命周期
         }
-        instance.subTree = subTree;
+        instance.subTree = subTree; // 设置subTree，用于patch比较和Unmount操作
       },
       {
         // 指定调度器为queueJob，使组件的更新有缓冲
