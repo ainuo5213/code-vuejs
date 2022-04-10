@@ -1,4 +1,6 @@
 import { defineAsyncComponent } from "./aipComponent.js";
+import { KeepAlive } from "./components/KeepAlive.js";
+import { Teleport } from "./components/Teleport.js";
 import { createRenderer, shouldSetAsProps } from "./renderer.js";
 
 const renderer = createRenderer({
@@ -112,48 +114,27 @@ const MyComponent = {
   },
 };
 
-const MyComponent1 = defineAsyncComponent({
-  loader: () =>
-    new Promise((resolve) => {
-      resolve({
-        setup() {
-          return () => ({
-            type: "div",
-            children: "this is async component",
-          });
-        },
-      });
-    }),
-  delay: 2000,
-  timeout: 3000,
-  loadingComponent: {
-    setup() {
-      return () => ({
+const MyComponent1 = {
+  setup() {
+    return () => {
+      return {
         type: "div",
-        children: "this is loadingComponent",
-      });
-    },
+        children: "111",
+      };
+    };
   },
-  errorComponent: {
-    setup() {
-      return () => ({
-        type: "div",
-        children: "this is errorComponent",
-      });
-    },
-  },
-  onError(retry, fail, retryCount) {
-    if (retryCount <= 3) {
-      retry();
-    } else {
-      fail();
-    }
-  },
-});
+};
 
 renderer.render(
   {
-    type: MyComponent1,
+    type: Teleport,
+    children: [
+      { type: "div", children: "text1" },
+      { type: "div", children: "text2" },
+    ],
+    props: {
+      to: document.body,
+    },
   },
   document.querySelector("#app")
 );

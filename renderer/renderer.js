@@ -57,21 +57,34 @@ export function normalizeClass(...args) {
 function unmount(vnode) {
   // 待处理
   if (typeof vnode.type === "object") {
-    const componentOptions = vnode.type;
-    const { beforeUnmount, unMounted } = componentOptions;
-    const instance = vnode.Component;
-    const {
-      beforeUnmount: beforeUnmountHooks,
-      unMounted: unMountedHooks,
-      context,
-      subTree,
-    } = instance;
-    beforeUnmountHooks &&
-      beforeUnmountHooks.forEach((hook) => hook.call(context));
-    beforeUnmount && beforeUnmount.call(context, context);
-    unMountedHooks && unMountedHooks.forEach((hook) => hook.call(context));
-    unMounted && unMounted.call(context, context);
-    unmount(subTree);
+    if (vnode.shouldKeepAlive) {
+      // 调用_deActivate使当前组件失活
+      vnode.keepAliveInstance._deActivate(vnode);
+      const componentOptions = vnode.type;
+      const instance = vnode.Component;
+      const { deactivated: deactivatedHooks, context } = instance;
+      const { deactivated } = componentOptions;
+      deactivated && deactivated.call(context);
+      deactivatedHooks &&
+        deactivatedHooks.forEach((hook) => hook.call(context));
+    } else {
+      const componentOptions = vnode.type;
+      const { beforeUnmount, unMounted } = componentOptions;
+      const instance = vnode.Component;
+      const {
+        beforeUnmount: beforeUnmountHooks,
+        unMounted: unMountedHooks,
+        context,
+        subTree,
+      } = instance;
+      beforeUnmountHooks &&
+        beforeUnmountHooks.forEach((hook) => hook.call(context));
+      beforeUnmount && beforeUnmount.call(context, context);
+      unMountedHooks && unMountedHooks.forEach((hook) => hook.call(context));
+      unMounted && unMounted.call(context, context);
+      unmount(subTree);
+    }
+
     return;
   }
   if (vnode.type === Fragment) {
@@ -315,9 +328,28 @@ export function createRenderer(options) {
         // 旧节点vnode1存在，只需更新Fragment的children
         patchChildren(vnode1, vnode2, container);
       }
+    } else if (typeof type === "object" || type.__isTeleport) {
+      // teleport组件，调用其process将控制权交出去
+      type.process(vnode1, vnode2, container, anchor, {
+        patch,
+        patchChildren,
+        unmount,
+        move(vnode, container, anchor) {
+          insert(
+            vnode.Component ? vnode.Component.subTree.el : vnode.el,
+            container,
+            anchor
+          );
+        },
+      });
     } else if (typeof type === "object" || typeof type === "function") {
       if (!vnode1) {
-        mountComponent(vnode2, container, anchor);
+        // 如果vnode2的keptAlive属性为true，说明该组件缓存过了不必再mount，调用其keepAliveInstance._activate使其激活
+        if (vnode2.keptAlive) {
+          vnode2.keepAliveInstance._activate(vnode2, container, anchor);
+        } else {
+          mountComponent(vnode2, container, anchor);
+        }
       } else {
         patchComponent(vnode1, vnode2, anchor);
       }
@@ -391,7 +423,21 @@ export function createRenderer(options) {
       updated: [],
       beforeUnmount: [],
       unMounted: [],
+      activated: [],
+      deactivated: [],
+      keepAliveContext: null, // 只有KeepAlive组件才有该属性
     };
+
+    // 如果是KeepAlive组件，则设置keepAliveContext上下文
+    const isKeepAlive = vnode.type.__isKeepAlive;
+    if (isKeepAlive) {
+      instance.keepAliveContext = {
+        move(vnode, container, anchor) {
+          insert(vnode.Component.subTree.el, container, anchor);
+        },
+        createElement,
+      };
+    }
 
     // setup第二个参数的emit方法
     function emit(event, ...payload) {
