@@ -49,12 +49,12 @@ export function normalizeClass(...args) {
       }
     }
   }
-
   return classes.join(" ");
 }
 
 // 移除节点
 function unmount(vnode) {
+  const needTransition = vnode.transition;
   // 待处理
   if (typeof vnode.type === "object") {
     if (vnode.shouldKeepAlive) {
@@ -93,7 +93,13 @@ function unmount(vnode) {
   }
   const parent = vnode.el.parentNode;
   if (parent) {
-    parent.removeChild(vnode.el);
+    const removeAction = () => parent.removeChild(vnode.el);
+    // 如果需要过渡动画，则调用其leave的钩子函数
+    if (needTransition) {
+      vnode.transition.leave(vnode.el, removeAction);
+    } else {
+      removeAction();
+    }
   }
 }
 
@@ -328,7 +334,7 @@ export function createRenderer(options) {
         // 旧节点vnode1存在，只需更新Fragment的children
         patchChildren(vnode1, vnode2, container);
       }
-    } else if (typeof type === "object" || type.__isTeleport) {
+    } else if (typeof type === "object" && type.__isTeleport) {
       // teleport组件，调用其process将控制权交出去
       type.process(vnode1, vnode2, container, anchor, {
         patch,
@@ -866,7 +872,6 @@ export function createRenderer(options) {
   function mountElement(vnode, container, anchor) {
     // 创建dom元素，并将dom元素挂载到vnode.el
     const el = (vnode.el = createElement(vnode.type));
-
     // 挂载prop
     if (vnode.props) {
       for (const propKey in vnode.props) {
@@ -885,8 +890,17 @@ export function createRenderer(options) {
       });
     }
 
+    // 如果是个Transition组件，需要在合适的实际调用其钩子函数
+    const needTransition = vnode.transition;
+    if (needTransition) {
+      vnode.transition.beforeEnter(el);
+    }
+
     // 挂载元素时可以指定锚点元素
     insert(el, container, anchor);
+    if (needTransition) {
+      vnode.transition.enter(el);
+    }
   }
 
   return {

@@ -1,7 +1,13 @@
 import { defineAsyncComponent } from "./aipComponent.js";
 import { KeepAlive } from "./components/KeepAlive.js";
 import { Teleport } from "./components/Teleport.js";
-import { createRenderer, shouldSetAsProps } from "./renderer.js";
+import { Transition } from "./components/Transition.js";
+import {
+  createRenderer,
+  Fragment,
+  normalizeClass,
+  shouldSetAsProps,
+} from "./renderer.js";
 
 const renderer = createRenderer({
   createElement(tag) {
@@ -52,10 +58,10 @@ const renderer = createRenderer({
       } else if (invoker) {
         el.removeEventListener(eventName, invoker);
       }
-      console.log(el._v_inv);
     }
+
     if (propKey === "class") {
-      el.className = nextValue;
+      el.className = normalizeClass(nextValue);
     }
     // 如果是DOM Properties（DOM Properties为DOM本身的属性，可直接访问而不通过getAttribute访问，例如button.disabled, input.value等）
     else if (shouldSetAsProps(el, propKey, nextValue)) {
@@ -94,46 +100,22 @@ const renderer = createRenderer({
   },
 });
 
-const MyComponent = {
-  name: "MyComponent",
-  data() {
-    return {
-      foo: "hello word from current component",
-    };
-  },
-  render() {
-    return {
-      type: "div",
-      children: `foo的值是：${this.foo}`,
-    };
-  },
-  setup(props, { attrs, emit, slots }) {
-    return {
-      testFoo: "hello test from setup",
-    };
-  },
-};
-
-const MyComponent1 = {
-  setup() {
-    return () => {
-      return {
-        type: "div",
-        children: "111",
-      };
-    };
-  },
-};
-
 renderer.render(
   {
-    type: Teleport,
-    children: [
-      { type: "div", children: "text1" },
-      { type: "div", children: "text2" },
-    ],
+    type: Transition,
+    children: {
+      default() {
+        return {
+          type: "div",
+          children: "111",
+          props: {
+            class: ["box"],
+          },
+        };
+      },
+    },
     props: {
-      to: document.body,
+      name: "box",
     },
   },
   document.querySelector("#app")

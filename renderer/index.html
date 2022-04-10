@@ -5,10 +5,32 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Document</title>
+    <style>
+      .box {
+        width: 100px;
+        height: 100px;
+        background-color: #f40;
+        margin: 0 auto;
+      }
+
+      .box-enter-from,
+      .box-leave-to {
+        transform: translateX(200px);
+      }
+      .box-enter-to,
+      .box-leave-from {
+        transform: translateX(0);
+      }
+
+      .box-enter-active,
+      .box-leave-active {
+        transition: transform 1s ease-in;
+      }
+    </style>
   </head>
   <body>
-      <div id="app"></div>
-      <!-- asdasd -->
+    <div id="app"></div>
+    <!-- asdasd -->
   </body>
   <script type="module" src="./test.js"></script>
 </html>
